@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Goal Coach Widget</title>
+  <style>
+    :root { --bg:#0b0b0b; --card:#141414; --text:#f4f4f4; --muted:#bdbdbd; --line:#2a2a2a; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    .sub { margin: 0 0 18px; color: var(--muted); }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px){ .grid { grid-template-columns: 1fr; } }
+
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    label { font-size: 12px; color: var(--muted); display:block; margin-bottom: 6px; }
+    input, select, textarea {
+      background:#0f0f0f; border:1px solid var(--line); color:var(--text);
+      border-radius: 12px; padding: 10px 12px; outline:none; width:100%;
+    }
+    textarea { min-height: 84px; resize: vertical; }
+    button {
+      background:#ffffff; color:#000; border:none; border-radius: 999px;
+      padding: 10px 14px; font-weight: 700; cursor:pointer;
+    }
+    button.secondary { background:#222; color:#fff; border:1px solid var(--line); font-weight:600; }
+    button:disabled { opacity: .5; cursor:not-allowed; }
+    .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); font-size:12px; }
+    .goals { display:flex; flex-direction:column; gap: 10px; margin-top: 10px; }
+    .goalItem { border:1px solid var(--line); border-radius: 14px; padding: 10px 12px; background:#0f0f0f; display:flex; justify-content:space-between; gap:10px; }
+    .goalText { color: var(--text); }
+    .x { background:transparent; color:var(--muted); border:1px solid var(--line); padding:6px 10px; border-radius: 999px; }
+    .out { white-space: pre-wrap; font-size: 14px; line-height: 1.35; }
+    .hr { height:1px; background: var(--line); margin: 12px 0; }
+    .tiny { font-size: 12px; color: var(--muted); }
+    .warn { color:#ffd37a; }
+    .ok { color:#a8ffb0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AI Goal Coach</h1>
+    <p class="sub">Enter goals once → get a fresh daily micro-plan + business lens. Black & white, fast demo.</p>
+
+    <div class="grid">
+      <!-- LEFT: Inputs -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div class="pill">Mode: <span id="modeLabel" class="warn">Demo (no API key)</span></div>
+          <button class="secondary" id="toggleModeBtn">Use API Key</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div style="flex: 1; min-width: 240px;">
+            <label>OpenAI API Key (optional)</label>
+            <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
+            <div class="tiny">Stored only in your browser (localStorage). For class demos, Demo mode is fine.</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div style="flex: 2; min-width: 260px;">
+            <label>Add a goal</label>
+            <input id="goalInput" type="text" placeholder="e.g., Draft audit risk memo; Study FAR; Reduce close errors" />
+          </div>
+          <div style="flex: 0;">
+            <label>&nbsp;</label>
+            <button id="addGoalBtn">Add</button>
+          </div>
+        </div>
+
+        <div class="goals" id="goalsList"></div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div style="flex:1; min-width: 160px;">
+            <label>Time available today</label>
+            <select id="timeAvail">
+              <option value="15">15 minutes</option>
+              <option value="30" selected>30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">60 minutes</option>
+              <option value="90">90 minutes</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width: 160px;">
+            <label>Energy level</label>
+            <select id="energy">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width: 200px;">
+            <label>Context</label>
+            <select id="context">
+              <option value="accounting student">Accounting student</option>
+              <option value="audit internship">Audit internship</option>
+              <option value="month-end close">Month-end close</option>
+              <option value="data/analytics project">Data/analytics project</option>
+              <option value="general productivity" selected>General productivity</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <div style="flex:1; min-width: 260px;">
+            <label>Yesterday’s obstacle (optional)</label>
+            <input id="obstacle" type="text" placeholder="e.g., procrastinated; unclear instructions; ran out of time" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 14px;">
+          <button id="generateBtn">Generate Today’s Plan</button>
+          <button class="secondary" id="saveObstacleBtn">Save Obstacle</button>
+          <button class="secondary" id="tomorrowBtn">Generate Tomorrow (Adapted)</button>
+        </div>
+
+        <div class="tiny" style="margin-top:10px;">
+          Tip: For a clean demo, add 2–3 accounting-flavored goals and run “Today” then “Tomorrow.”
+        </div>
+      </div>
+
+      <!-- RIGHT: Output -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div>
+            <label>Output</label>
+            <div class="pill">Day: <span id="dayLabel">Today</span></div>
+          </div>
+          <button class="secondary" id="clearBtn">Clear Output</button>
+        </div>
+        <div class="hr"></div>
+        <div id="output" class="out">Add goals on the left, then click “Generate Today’s Plan.”</div>
+        <div class="hr"></div>
+        <div class="tiny" id="statusLine"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/**
+ * AI Goal Coach Widget
+ * - Demo mode: offline strategy rotation + structured output
+ * - API mode: calls OpenAI Chat Completions-compatible endpoint via fetch
+ *   (Note: For real deployments, you'd call from a backend to keep the key safe.
+ *    For a class widget demo, this is usually enough.)
+ */
+
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  goals: [],
+  dayIndex: 0, // 0 = today, 1 = tomorrow
+  obstaclesLog: [], // keep history
+  useApi: false
+};
+
+// Strategy rotation for demo mode
+const STRATEGIES = [
+  "Start with the smallest ‘win’ to build momentum",
+  "Template-first: outline and fill in blanks",
+  "Teach-it-back: explain it simply before doing it",
+  "Risk-first: identify what could go wrong, then act",
+  "Time-box: 10–10–10 minute sprint structure",
+  "Example-first: find 2 examples then replicate",
+  "Hardest-first: do the highest-friction step first",
+  "Checklists + controls: prevent errors before speed"
+];
+
+function load() {
+  const saved = JSON.parse(localStorage.getItem("goalCoachState") || "{}");
+  if (Array.isArray(saved.goals)) state.goals = saved.goals;
+  if (typeof saved.dayIndex === "number") state.dayIndex = saved.dayIndex;
+  if (Array.isArray(saved.obstaclesLog)) state.obstaclesLog = saved.obstaclesLog;
+  const key = localStorage.getItem("goalCoachApiKey") || "";
+  $("apiKey").value = key;
+
+  // Decide default mode based on key existence
+  state.useApi = !!key;
+  updateModeUI();
+  renderGoals();
+}
+
+function persist() {
+  localStorage.setItem("goalCoachState", JSON.stringify({
+    goals: state.goals,
+    dayIndex: state.dayIndex,
+    obstaclesLog: state.obstaclesLog
+  }));
+}
+
+function updateModeUI() {
+  const key = $("apiKey").value.trim();
+  const canUseApi = key.length > 0;
+  state.useApi = canUseApi;
+
+  $("modeLabel").textContent = canUseApi ? "API (key set)" : "Demo (no API key)";
+  $("modeLabel").className = canUseApi ? "ok" : "warn";
+  $("toggleModeBtn").textContent = canUseApi ? "Use Demo Mode" : "Use API Key";
+
+  // If key exists, we consider API mode. If not, demo.
+  // The toggle button will clear key to switch to demo, or focus key box to switch to API.
+}
+
+function renderGoals() {
+  const list = $("goalsList");
+  list.innerHTML = "";
+  if (state.goals.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "tiny";
+    empty.textContent = "No goals yet. Add 2–3 for your demo.";
+    list.appendChild(empty);
+    return;
+  }
+
+  state.goals.forEach((g, idx) => {
+    const item = document.createElement("div");
+    item.className = "goalItem";
+    const left = document.createElement("div");
+    left.className = "goalText";
+    left.textContent = g;
+    const btn = document.createElement("button");
+    btn.className = "x";
+    btn.textContent = "Remove";
+    btn.onclick = () => {
+      state.goals.splice(idx, 1);
+      persist();
+      renderGoals();
+    };
+    item.appendChild(left);
+    item.appendChild(btn);
+    list.appendChild(item);
+  });
+}
+
+function addGoal() {
+  const t = $("goalInput").value.trim();
+  if (!t) return;
+  state.goals.push(t);
+  $("goalInput").value = "";
+  persist();
+  renderGoals();
+}
+
+function setStatus(msg) {
+  $("statusLine").textContent = msg || "";
+}
+
+function setOutput(text) {
+  $("output").textContent = text;
+}
+
+function currentObstacle() {
+  const typed = $("obstacle").value.trim();
+  // If the user typed one, use it; else use the most recent logged obstacle (if any)
+  if (typed) return typed;
+  const last = state.obstaclesLog[state.obstaclesLog.length - 1];
+  return last ? last.text : "";
+}
+
+function dayLabel() {
+  return state.dayIndex === 0 ? "Today" : "Tomorrow";
+}
+
+function getStrategy(goal, dayIndex) {
+  // Rotate strategy by (goalIndex + dayIndex) so each goal varies
+  const i = state.goals.indexOf(goal);
+  const sIdx = (i + dayIndex) % STRATEGIES.length;
+  return STRATEGIES[sIdx];
+}
+
+function buildDemoPlan() {
+  const minutes = $("timeAvail").value;
+  const energy = $("energy").value;
+  const context = $("context").value;
+  const obstacle = currentObstacle();
+
+  let out = `DAY: ${dayLabel()}\n`;
+  out += `Context: ${context}\nTime: ${minutes} minutes | Energy: ${energy}\n`;
+  if (obstacle) out += `Obstacle to account for: ${obstacle}\n`;
+  out += "\n";
+
+  state.goals.forEach((goal, idx) => {
+    const strategy = getStrategy(goal, state.dayIndex);
+    out += `GOAL ${idx + 1}: ${goal}\n`;
+    out += `1) Today’s strategy: ${strategy}\n`;
+    out += `2) 3-step plan:\n`;
+
+    // Simple adaptation rules (demo mode)
+    const adapt = obstacle ? ` (adapted for "${obstacle}")` : "";
+
+    out += `   - Step 1 (5 min): Clarify the next action + success criteria${adapt}\n`;
+    out += `   - Step 2 (${Math.max(5, Math.floor(minutes / 3))} min): Execute the core work in a timed sprint\n`;
+    out += `   - Step 3 (5 min): Quick review + document what’s done / next\n`;
+
+    out += `3) Business lens: Reduce risk by writing down assumptions, creating a checklist, and verifying the output.\n`;
+    out += `4) Time estimate: ~${Math.min(minutes, 20 + idx * 5)} minutes\n`;
+    out += "\n";
+  });
+
+  out += "Reflection prompt: If you don’t finish, log the obstacle so tomorrow’s plan adjusts.\n";
+  return out;
+}
+
+function buildAiPrompt() {
+  const minutes = $("timeAvail").value;
+  const energy = $("energy").value;
+  const context = $("context").value;
+  const obstacle = currentObstacle();
+
+  const goalsBullets = state.goals.map((g, i) => `${i+1}. ${g}`).join("\n");
+
+  return `
+You are a productivity coach for accounting students and early-career accountants.
+Output MUST be specific, short, actionable, and measurable.
+Vary the approach each day: do NOT repeat yesterday’s strategy for the same goal.
+If an obstacle is provided, adapt the plan to reduce that obstacle.
+
+Context: ${context}
+Day: ${dayLabel()}
+Time available today: ${minutes} minutes
+Energy level: ${energy}
+Yesterday's obstacle (if any): ${obstacle || "none"}
+
+Goals:
+${goalsBullets}
+
+For EACH goal, output in exactly this format:
+
+GOAL X: <goal text>
+1) Today’s strategy: <1 sentence>
+2) 3-step plan:
+- <step 1> (include time estimate)
+- <step 2> (include time estimate)
+- <step 3> (include time estimate)
+3) Accounting/business lens: <1 sentence: risk/control/efficiency/documentation/stakeholders>
+4) Time estimate: <total time>
+
+End with a 1-sentence reflection question.
+`.trim();
+}
+
+async function callOpenAI(prompt) {
+  // NOTE: for production use, call from backend (never expose keys).
+  // For class demo/prototype, this is acceptable if you understand the tradeoff.
+  const key = $("apiKey").value.trim();
+  if (!key) throw new Error("No API key set.");
+
+  // This uses a "Chat Completions style" request. If your environment needs a different endpoint/model,
+  // adjust model name and URL accordingly.
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type":"application/json",
+      "Authorization": `Bearer ${key}`
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You generate concise, structured daily plans." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.8
+    })
+  });
+
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`API error ${res.status}: ${t}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "(No content returned)";
+}
+
+async function generate() {
+  if (state.goals.length === 0) {
+    setOutput("Add at least 1 goal first.");
+    return;
+  }
+
+  $("dayLabel").textContent = dayLabel();
+  setStatus("Generating...");
+
+  try {
+    // Save key locally if present
+    const key = $("apiKey").value.trim();
+    if (key) localStorage.setItem("goalCoachApiKey", key);
+
+    updateModeUI();
+
+    if (state.useApi) {
+      const prompt = buildAiPrompt();
+      const text = await callOpenAI(prompt);
+      setOutput(text);
+      setStatus("Done (API).");
+    } else {
+      const text = buildDemoPlan();
+      setOutput(text);
+      setStatus("Done (Demo mode).");
+    }
+  } catch (e) {
+    setOutput(`Could not generate via API.\n\nReason: ${e.message}\n\nFalling back to Demo mode output:\n\n${buildDemoPlan()}`);
+    setStatus("API failed → used Demo mode.");
+  }
+}
+
+function saveObstacle() {
+  const t = $("obstacle").value.trim();
+  if (!t) {
+    setStatus("No obstacle typed to save.");
+    return;
+  }
+  state.obstaclesLog.push({ day: dayLabel(), text: t, ts: new Date().toISOString() });
+  persist();
+  setStatus(`Saved obstacle: "${t}"`);
+}
+
+function tomorrow() {
+  state.dayIndex = 1;
+  persist();
+  generate();
+}
+
+function today() {
+  state.dayIndex = 0;
+  persist();
+  generate();
+}
+
+// Wire up events
+$("addGoalBtn").onclick = addGoal;
+$("goalInput").addEventListener("keydown", (e) => { if (e.key === "Enter") addGoal(); });
+
+$("generateBtn").onclick = () => { state.dayIndex = 0; persist(); generate(); };
+$("tomorrowBtn").onclick = tomorrow;
+$("saveObstacleBtn").onclick = saveObstacle;
+$("clearBtn").onclick = () => { setOutput("Cleared. Click Generate to produce a plan."); setStatus(""); };
+
+$("apiKey").addEventListener("input", updateModeUI);
+
+$("toggleModeBtn").onclick = () => {
+  const key = $("apiKey").value.trim();
+  if (key) {
+    // Switch to demo by clearing key
+    $("apiKey").value = "";
+    localStorage.removeItem("goalCoachApiKey");
+    updateModeUI();
+    setStatus("Switched to Demo mode.");
+  } else {
+    $("apiKey").focus();
+    setStatus("Paste an API key to enable API mode.");
+  }
+};
+
+load();
+</script>
+</body>
+</html>
